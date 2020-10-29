@@ -23,7 +23,7 @@ model_names = sorted(name for name in models.__dict__
     and callable(models.__dict__[name]))
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
-parser.add_argument('-j', '--workers', default=1, type=int, metavar='N',
+parser.add_argument('-j', '--workers', default=0, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
 parser.add_argument('--epochs', default=90, type=int, metavar='N',
                     help='number of total epochs to run')
@@ -58,7 +58,7 @@ parser.add_argument('--multiprocessing-distributed', action='store_true',
                          'fastest way to use PyTorch for either single node or '
                          'multi node data parallel training')
 ################################################################################
-""" These flags are used to run the benchmark """
+""" AliJahan: These flags are used to run the benchmark """
 parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
                     choices=model_names,
                     help='model architecture: ' +
@@ -86,7 +86,7 @@ best_acc1 = 0
 
 def main():
     args = parser.parse_args()
-
+    print(torch.__version__)
     if args.seed is not None:
         random.seed(args.seed)
         torch.manual_seed(args.seed)
@@ -203,8 +203,6 @@ def main_worker(gpu, ngpus_per_node, args):
         else:
             print("=> no checkpoint found at '{}'".format(args.resume))
 
-    cudnn.benchmark = True
-    cudnn.conv_fwd_algo =  args.algo
     # Data loading code
     valdir = os.path.join(args.data, 'val')
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
@@ -219,9 +217,17 @@ def main_worker(gpu, ngpus_per_node, args):
         ])),
         batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True)
+    #print("@:model.begin")
+    #print(model)
+    #print("@:model.end")
+    cudnn.benchmark = True
+    #cudnn.conv_fwd_algo =  args.algo
     acc = validate(val_loader, model, criterion, args)
 
 def validate(val_loader, model, criterion, args):
+    #import os
+    #print(os.getpid())
+    #input("?")
     batch_time = AverageMeter('Time', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
     top1 = AverageMeter('Acc@1', ':6.2f')
@@ -233,7 +239,7 @@ def validate(val_loader, model, criterion, args):
 
     # switch to evaluate mode
     model.eval()
-    torch.cuda.memory_summary(device=None, abbreviated=False)
+    #with torch.autograd.profiler.profile(use_cuda=True) as prof:
     with torch.no_grad():
         end = time.time()
         for i, (images, target) in enumerate(val_loader):
@@ -241,7 +247,6 @@ def validate(val_loader, model, criterion, args):
                 images = images.cuda(args.gpu, non_blocking=True)
             if torch.cuda.is_available():
                 target = target.cuda(args.gpu, non_blocking=True)
-
             #<AliJahan/>
             if args.mem_trace:
                 print("Start-------------------------")
@@ -249,15 +254,13 @@ def validate(val_loader, model, criterion, args):
 
             # compute output
             output = model(images)
-
             #<AliJahan/>
             if args.mem_trace:
                 print("End-------------------------")
             if args.mem_trace:
                 print("Mem_trace mode has been enabled, returning after feeding the first batch to the model")
-                return 0
+                break
             #</AliJahan>
-
             loss = criterion(output, target)
             # measure accuracy and record loss
             acc1, acc5 = accuracy(output, target, topk=(1, 5))
@@ -268,13 +271,13 @@ def validate(val_loader, model, criterion, args):
             # measure elapsed time
             batch_time.update(time.time() - end)
             end = time.time()
-
             if i % args.print_freq == 0:
                 progress.display(i)
         # TODO: this should also be done with the ProgressMeter
         print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
               .format(top1=top1, top5=top5))
-
+    #print(prof) 
+    #prof.export_chrome_trace("./trace.json")
     return top1.avg
 
 
